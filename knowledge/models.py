@@ -1,9 +1,9 @@
 from knowledge import settings
 
-import django
 from django.db import models
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 from django.conf import settings as django_settings
+from django.urls import reverse
 
 from knowledge.managers import QuestionManager, ResponseManager
 from knowledge.signals import knowledge_post_save
@@ -27,7 +27,7 @@ class Category(models.Model):
     title = models.CharField(max_length=255)
     slug = models.SlugField(unique=True)
 
-    def __unicode__(self):
+    def __str__(self):
         return self.title
 
     class Meta:
@@ -45,8 +45,9 @@ class KnowledgeBase(models.Model):
     added = models.DateTimeField(auto_now_add=True)
     lastchanged = models.DateTimeField(auto_now=True)
 
-    user = models.ForeignKey('auth.User' if django.VERSION < (1, 5, 0) else django_settings.AUTH_USER_MODEL, blank=True,
-                             null=True, db_index=True)
+    user = models.ForeignKey(django_settings.AUTH_USER_MODEL, blank=True,
+                             null=True, db_index=True,
+                             on_delete=models.SET_NULL)
     alert = models.BooleanField(default=settings.ALERTS,
         verbose_name=_('Alert'),
         help_text=_('Check this if you want to be alerted when a new'
@@ -170,17 +171,16 @@ class Question(KnowledgeBase):
         verbose_name = _('Question')
         verbose_name_plural = _('Questions')
 
-    def __unicode__(self):
+    def __str__(self):
         return self.title
 
-    @models.permalink
     def get_absolute_url(self):
         from django.template.defaultfilters import slugify
 
         if settings.SLUG_URLS:
-            return ('knowledge_thread', [self.id, slugify(self.title)])
+            return reverse('knowledge_thread', args=[self.id, slugify(self.title)])
         else:
-            return ('knowledge_thread_no_slug', [self.id])
+            return reverse('knowledge_thread_no_slug', args=[self.id])
 
     def inherit(self):
         pass
@@ -252,7 +252,8 @@ class Response(KnowledgeBase):
     is_response = True
 
     question = models.ForeignKey('knowledge.Question',
-        related_name='responses')
+        related_name='responses',
+        on_delete=models.CASCADE)
 
     body = models.TextField(blank=True, null=True,
         verbose_name=_('Response'),
@@ -270,8 +271,8 @@ class Response(KnowledgeBase):
         verbose_name = _('Response')
         verbose_name_plural = _('Responses')
 
-    def __unicode__(self):
-        return self.body[0:100] + u'...'
+    def __str__(self):
+        return (self.body or '')[0:100] + '...'
 
     def states(self):
         """
