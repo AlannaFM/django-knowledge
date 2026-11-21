@@ -8,3 +8,13 @@ docs/_build
 .sass-cache
 
 tests/reports
+venv/
+.venv/
+__pycache__/
+db.sqlite3
+.pytest_cache/
+.coverage
+htmlcov/
+.env
+.idea/
+.vscode/
