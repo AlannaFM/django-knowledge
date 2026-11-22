@@ -1,14 +1,18 @@
+from __future__ import annotations
+
+from typing import Any
+
 from django.db import models
 from django.db.models import Q
+from django.db.models import QuerySet
 
 
 class QuestionManager(models.Manager):
     # def get_query_set(self, *args, **kwargs):
     #     return super(QuestionManager, self).get_query_set(*args, **kwargs)
 
-    def can_view(self, user):
-        qs = super(QuestionManager, self).get_queryset()\
-                                         .select_related('user')
+    def can_view(self, user: Any) -> QuerySet:
+        qs = super().get_queryset().select_related('user')
 
         if user.is_staff or user.is_superuser:
             return qs.all()
@@ -26,9 +30,8 @@ class ResponseManager(models.Manager):
     #     return super(ResponseManager, self).all(*args, **kwargs)\
     #                                        .select_related('question', 'user')
 
-    def can_view(self, user):
-        qs = super(ResponseManager, self).get_queryset()\
-                                         .select_related('question', 'user')
+    def can_view(self, user: Any) -> QuerySet:
+        qs = super().get_queryset().select_related('question', 'user')
 
         if user.is_staff or user.is_superuser:
             return qs.all()

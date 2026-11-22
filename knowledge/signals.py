@@ -1,9 +1,17 @@
+from __future__ import annotations
+
+from typing import Any
+
 from knowledge.utils import get_module
 from knowledge import settings
 
 
-
-def send_alerts(target_dict, response=None, question=None, **kwargs):
+def send_alerts(
+    target_dict: dict[str, Any],
+    response: Any | None = None,
+    question: Any | None = None,
+    **kwargs: Any,
+) -> None:
     """
     This can be overridden via KNOWLEDGE_ALERTS_FUNCTION_PATH.
     """
@@ -17,7 +25,7 @@ def send_alerts(target_dict, response=None, question=None, **kwargs):
 
     for email, name in target_dict.items():
         if isinstance(name, User):
-            name = u'{0} {1}'.format(name.first_name, name.last_name)
+            name = '{0} {1}'.format(name.first_name, name.last_name)
         else:
             name = name[0]
 
@@ -38,13 +46,18 @@ def send_alerts(target_dict, response=None, question=None, **kwargs):
         message_html = render_to_string(
             'django_knowledge/emails/message.html', context)
 
-        subject = u' '.join(line.strip() for line in subject.splitlines()).strip()
+        subject = ' '.join(line.strip() for line in subject.splitlines()).strip()
         msg = EmailMultiAlternatives(subject, message, to=[email])
         msg.attach_alternative(message_html, 'text/html')
         msg.send()
 
 
-def knowledge_post_save(sender, instance, created, **kwargs):
+def knowledge_post_save(
+    sender: type,
+    instance: Any,
+    created: bool,
+    **kwargs: Any,
+) -> None:
     """
     Gathers all the responses for the sender's parent question
     and shuttles them to the predefined module.
@@ -70,7 +83,7 @@ def knowledge_post_save(sender, instance, created, **kwargs):
         elif isinstance(instance, Question):
             staffers = User.objects.filter(is_staff=True)
             out_dict = dict([[user.email, user] for user in staffers
-                                if user.has_perm('change_question')])
+                                if user.has_perm('knowledge.change_question')])
 
         # remove the creator...
         if instance.get_email() in out_dict.keys():
