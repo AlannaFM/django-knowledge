@@ -2,15 +2,17 @@ from knowledge.utils import get_module
 from knowledge import settings
 
 
+
 def send_alerts(target_dict, response=None, question=None, **kwargs):
     """
     This can be overridden via KNOWLEDGE_ALERTS_FUNCTION_PATH.
     """
-    from django.contrib.auth.models import User
     from django.template.loader import render_to_string
     from django.contrib.sites.models import Site
     from django.core.mail import EmailMultiAlternatives
+    from django.contrib.auth import get_user_model
 
+    User = get_user_model()
     site = Site.objects.get_current()
 
     for email, name in target_dict.items():
@@ -48,7 +50,9 @@ def knowledge_post_save(sender, instance, created, **kwargs):
     and shuttles them to the predefined module.
     """
     from knowledge.models import Question, Response
-    from django.contrib.auth.models import User
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
 
     func = get_module(settings.ALERTS_FUNCTION_PATH)
 

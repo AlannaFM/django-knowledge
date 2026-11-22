@@ -7,13 +7,13 @@ class QuestionManager(models.Manager):
     #     return super(QuestionManager, self).get_query_set(*args, **kwargs)
 
     def can_view(self, user):
-        qs = super(QuestionManager, self).get_query_set()\
+        qs = super(QuestionManager, self).get_queryset()\
                                          .select_related('user')
 
         if user.is_staff or user.is_superuser:
             return qs.all()
 
-        if user.is_anonymous():
+        if user.is_anonymous:
             return qs.filter(status='public')
 
         return qs.filter(
@@ -27,13 +27,13 @@ class ResponseManager(models.Manager):
     #                                        .select_related('question', 'user')
 
     def can_view(self, user):
-        qs = super(ResponseManager, self).get_query_set()\
+        qs = super(ResponseManager, self).get_queryset()\
                                          .select_related('question', 'user')
 
         if user.is_staff or user.is_superuser:
             return qs.all()
 
-        if user.is_anonymous():
+        if user.is_anonymous:
             return qs.filter(
                 Q(status='public') |
                 Q(status='inherit', question__status='public')
