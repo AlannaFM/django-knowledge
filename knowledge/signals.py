@@ -1,6 +1,6 @@
 from knowledge.utils import get_module
 from knowledge import settings
-from django.conf import settings as django_settings
+
 
 
 def send_alerts(target_dict, response=None, question=None, **kwargs):
