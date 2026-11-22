@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import Any, Optional
+
 from knowledge import settings
 
 from django.db import models
@@ -27,7 +31,7 @@ class Category(models.Model):
     title = models.CharField(max_length=255)
     slug = models.SlugField(unique=True)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.title
 
     class Meta:
@@ -40,7 +44,8 @@ class KnowledgeBase(models.Model):
     """
     The base class for Knowledge models.
     """
-    is_question, is_response = False, False
+    is_question: bool = False
+    is_response: bool = False
 
     added = models.DateTimeField(auto_now_add=True)
     lastchanged = models.DateTimeField(auto_now=True)
@@ -64,7 +69,7 @@ class KnowledgeBase(models.Model):
     class Meta:
         abstract = True
 
-    def save(self, *args, **kwargs):
+    def save(self, *args: Any, **kwargs: Any) -> None:
         if not self.user and self.name and self.email \
                 and not self.id:
             # first time because no id
@@ -73,32 +78,40 @@ class KnowledgeBase(models.Model):
         if settings.AUTO_PUBLICIZE and not self.id:
             self.public(save=False)
 
-        super(KnowledgeBase, self).save(*args, **kwargs)
+        super().save(*args, **kwargs)
 
     #########################
     #### GENERIC GETTERS ####
     #########################
 
-    def get_name(self):
+    def get_name(self) -> str:
         """
         Get local name, then self.user's first/last, and finally
         their username if all else fails.
         """
         name = (self.name or (self.user and (
-            u'{0} {1}'.format(self.user.first_name, self.user.last_name).strip()\
+            '{0} {1}'.format(self.user.first_name, self.user.last_name).strip()
             or self.user.username
-        )))
+        )) or '')
         return name.strip() or _("Anonymous")
 
-    get_email = lambda s: s.email or (s.user and s.user.email)
-    get_pair = lambda s: (s.get_name(), s.get_email())
-    get_user_or_pair = lambda s: s.user or s.get_pair()
+    def get_email(self) -> Optional[str]:
+        """retornar a instancia email ou email do usuário"""
+        return self.email or (self.user and self.user.email)
+
+    def get_pair(self) -> tuple[str, Optional[str]]:
+        """retornar tupla(name, email) """
+        return (self.get_name(), self.get_email())
+
+    def get_user_or_pair(self) -> Any:
+        """retornar a instancia do usuário ou um par (name, email)"""
+        return self.user or self.get_pair()
 
     ########################
     #### STATUS METHODS ####
     ########################
 
-    def can_view(self, user):
+    def can_view(self, user: Any) -> bool:
         """
         Returns a boolean dictating if a User like instance can
         view the current Model instance.
@@ -121,32 +134,32 @@ class KnowledgeBase(models.Model):
 
         return False
 
-    def switch(self, status, save=True):
+    def switch(self, status: str, save: bool = True) -> None:
         self.status = status
         if save:
             self.save()
     switch.alters_data = True
 
-    def public(self, save=True):
+    def public(self, save: bool = True) -> None:
         self.switch('public', save)
     public.alters_data = True
 
-    def private(self, save=True):
+    def private(self, save: bool = True) -> None:
         self.switch('private', save)
     private.alters_data = True
 
-    def inherit(self, save=True):
+    def inherit(self, save: bool = True) -> None:
         self.switch('inherit', save)
     inherit.alters_data = True
 
-    def internal(self, save=True):
+    def internal(self, save: bool = True) -> None:
         self.switch('internal', save)
     internal.alters_data = True
 
 
 class Question(KnowledgeBase):
-    is_question = True
-    _requesting_user = None
+    is_question: bool = True
+    _requesting_user: Any = None
 
     title = models.CharField(max_length=255,
         verbose_name=_('Question'),
@@ -171,10 +184,10 @@ class Question(KnowledgeBase):
         verbose_name = _('Question')
         verbose_name_plural = _('Questions')
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.title
 
-    def get_absolute_url(self):
+    def get_absolute_url(self) -> str:
         from django.template.defaultfilters import slugify
 
         if settings.SLUG_URLS:
@@ -182,13 +195,13 @@ class Question(KnowledgeBase):
         else:
             return reverse('knowledge_thread_no_slug', args=[self.id])
 
-    def inherit(self):
+    def inherit(self) -> None:
         pass
 
-    def internal(self):
+    def internal(self) -> None:
         pass
 
-    def lock(self, save=True):
+    def lock(self, save: bool = True) -> None:
         self.locked = not self.locked
         if save:
             self.save()
@@ -198,31 +211,31 @@ class Question(KnowledgeBase):
     #### RESPONSES ####
     ###################
 
-    def get_responses(self, user=None):
+    def get_responses(self, user: Any = None) -> list | models.QuerySet:
         user = user or self._requesting_user
         if user:
             return [r for r in self.responses.all().select_related('user') if r.can_view(user)]
         else:
             return self.responses.all().select_related('user')
 
-    def answered(self):
+    def answered(self) -> bool:
         """
         Returns a boolean indictating whether there any questions.
         """
         return bool(self.get_responses())
 
-    def accepted(self):
+    def accepted(self) -> bool:
         """
         Returns a boolean indictating whether there is a accepted answer
         or not.
         """
         return any([r.accepted for r in self.get_responses()])
 
-    def clear_accepted(self):
-        self.get_responses().update(accepted=False)
+    def clear_accepted(self) -> None:
+        self.responses.all().update(accepted=False)
     clear_accepted.alters_data = True
 
-    def accept(self, response=None):
+    def accept(self, response: Any = None) -> bool:
         """
         Given a response, make that the one and only accepted answer.
         Similar to StackOverflow.
@@ -237,19 +250,19 @@ class Question(KnowledgeBase):
             return False
     accept.alters_data = True
 
-    def states(self):
+    def states(self) -> list[str | None]:
         """
         Handy for checking for mod bar button state.
         """
         return [self.status, 'lock' if self.locked else None]
 
     @property
-    def url(self):
+    def url(self) -> str:
         return self.get_absolute_url()
 
 
 class Response(KnowledgeBase):
-    is_response = True
+    is_response: bool = True
 
     question = models.ForeignKey('knowledge.Question',
         related_name='responses',
@@ -271,16 +284,16 @@ class Response(KnowledgeBase):
         verbose_name = _('Response')
         verbose_name_plural = _('Responses')
 
-    def __str__(self):
+    def __str__(self) -> str:
         return (self.body or '')[0:100] + '...'
 
-    def states(self):
+    def states(self) -> list[str | None]:
         """
         Handy for checking for mod bar button state.
         """
         return [self.status, 'accept' if self.accepted else None]
 
-    def accept(self):
+    def accept(self) -> None:
         self.question.accept(self)
     accept.alters_data = True
 

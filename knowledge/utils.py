@@ -1,7 +1,11 @@
+from __future__ import annotations
+
+from typing import Any, Callable
+
 from django.conf import settings
 
 
-def paginate(iterable, per_page, page_num):
+def paginate(iterable: Any, per_page: int, page_num: str | int) -> tuple:
     """
         recipes = Recipe.objects.all()
         paginator, recipes = paginate(recipes, 12,
@@ -24,7 +28,7 @@ def paginate(iterable, per_page, page_num):
     return paginator, iterable
 
 
-def get_module(path):
+def get_module(path: str) -> Callable:
     """
     A modified duplicate from Django's built in backend
     retriever.
@@ -50,4 +54,4 @@ def get_module(path):
     return func
 
 
-user_model_label = getattr(settings, 'AUTH_USER_MODEL', 'auth.User')
+user_model_label: str = getattr(settings, 'AUTH_USER_MODEL', 'auth.User')
