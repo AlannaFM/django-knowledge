@@ -92,7 +92,7 @@ class KnowledgeBase(models.Model):
         name = (self.name or (self.user and (
             '{0} {1}'.format(self.user.first_name, self.user.last_name).strip()
             or self.user.username
-        )))
+        )) or '')
         return name.strip() or _("Anonymous")
 
     def get_email(self) -> Optional[str]:
@@ -232,7 +232,7 @@ class Question(KnowledgeBase):
         return any([r.accepted for r in self.get_responses()])
 
     def clear_accepted(self) -> None:
-        self.get_responses().update(accepted=False)
+        self.responses.all().update(accepted=False)
     clear_accepted.alters_data = True
 
     def accept(self, response: Any = None) -> bool:

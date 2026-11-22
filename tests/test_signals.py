@@ -1,7 +1,7 @@
 from unittest.mock import patch
 
 from django.test import TestCase
-from django.contrib.auth.models import User, AnonymousUser
+from django.contrib.auth.models import User, AnonymousUser, Permission
 from django.contrib.sites.models import Site
 from django.conf import settings as django_settings
 from django.core import mail
@@ -12,12 +12,14 @@ from knowledge import settings
 
 class SignalsTestCase(TestCase):
     def setUp(self):
-        # Patch django.template.loader.render_to_string para evitar chamar get_absolute_url  e tags de marcação ausentes
+        # TODO: remover este patch depois do merge de chore/templates-templatetags, para os e-mails passarem a renderizar os templates de verdade.
+        # (hoje os templates de e-mail ainda usam {% load markup %})
         self.render_patcher = patch(
             'django.template.loader.render_to_string',
             return_value='Notification content',
         )
         self.mock_render = self.render_patcher.start()
+        self.addCleanup(self.render_patcher.stop)
 
         # Garante que o site existe para Site.objects.get_current()
         Site.objects.get_or_create(
@@ -27,6 +29,7 @@ class SignalsTestCase(TestCase):
 
         self.initial_alerts = settings.ALERTS
         settings.ALERTS = True
+        self.addCleanup(setattr, settings, 'ALERTS', self.initial_alerts)
 
         self.admin = User.objects.create_superuser('admin', 'admin@example.com', 'secret')
         self.joe = User.objects.create_user('joe', 'joedirt@example.com', 'secret')
@@ -54,12 +57,6 @@ class SignalsTestCase(TestCase):
         )
 
         mail.outbox = []  # zera a caixa de correio após setUp
-
-    def tearDown(self):
-        self.render_patcher.stop()
-        mail.outbox = []
-        settings.ALERTS = self.initial_alerts
-        super().tearDown()
 
     def test_sending_alerts_normal(self):
         """
@@ -130,7 +127,7 @@ class SignalsTestCase(TestCase):
     def test_sending_staffers_on_new_question(self):
         """
         quando um usuário não-staff cria uma nova pergunta, os staffers com knowledge.change_question
-        recebem um alerta.
+        recebem um alerta
         """
         mail.outbox = []
 
@@ -147,7 +144,7 @@ class SignalsTestCase(TestCase):
 
     def test_sending_staffers_remove_self(self):
         """
-        quando um usuário staff cria uma nova pergunta, ele é excluído dos destinatários.
+        quando um usuário staff cria uma nova pergunta, ele é excluído dos destinatários
         """
         mail.outbox = []
 
@@ -163,7 +160,7 @@ class SignalsTestCase(TestCase):
 
     def test_no_alerts_when_settings_disabled(self):
         """
-        quando settings.ALERTS é falso, nenhum alerta é enviado.
+        quando settings.ALERTS é falso, nenhum alerta é enviado
         """
         settings.ALERTS = False
         mail.outbox = []
@@ -176,3 +173,38 @@ class SignalsTestCase(TestCase):
         )
 
         self.assertEqual(len(mail.outbox), 0)
+
+    def test_staff_sem_permissao_nao_recebe_alerta_de_nova_pergunta(self):
+        """
+        staff comum, sem a permissao knowledge.change_question, nao deve ser
+        alertado
+        """
+        staff = User.objects.create_user(
+            'staff', 'staff@example.com', 'secret', is_staff=True)
+        mail.outbox = []
+
+        Question.objects.create(
+            user=self.joe, title='Nova pergunta', body='Corpo', alert=True)
+
+        recipients = [m.to[0] for m in mail.outbox]
+        self.assertEqual(recipients, [self.admin.email])
+        self.assertNotIn(staff.email, recipients)
+
+    def test_staff_com_permissao_recebe_alerta_de_nova_pergunta(self):
+        """
+        staff com knowledge.change_question recebe o alerta, alem do admin
+        """
+        staff = User.objects.create_user(
+            'staff', 'staff@example.com', 'secret', is_staff=True)
+        staff.user_permissions.add(Permission.objects.get(
+            codename='change_question',
+            content_type__app_label='knowledge',
+        ))
+        mail.outbox = []
+
+        Question.objects.create(
+            user=self.joe, title='Nova pergunta', body='Corpo', alert=True)
+
+        recipients = [m.to[0] for m in mail.outbox]
+        self.assertIn(staff.email, recipients)
+        self.assertIn(self.admin.email, recipients)

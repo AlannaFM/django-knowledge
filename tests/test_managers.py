@@ -92,3 +92,17 @@ class ManagersTestCase(TestCase):
         self.assertEqual(R.can_view(self.bob).count(), 0)
         self.assertEqual(R.can_view(self.joe).count(), 1)   # dono da pergunta
         self.assertEqual(R.can_view(self.admin).count(), 1) # dono da resposta e staff
+
+    def test_staff_nao_superuser_ve_conteudo_interno(self):
+        staff = User.objects.create_user(
+            'staff', 'staff@example.com', 'secret', is_staff=True)
+
+        self.question.status = 'internal'
+        self.question.save()
+        self.response.status = 'internal'
+        self.response.save()
+
+        self.assertEqual(Question.objects.can_view(staff).count(), 1)
+        self.assertEqual(Response.objects.can_view(staff).count(), 1)
+        self.assertTrue(self.question.can_view(staff))
+        self.assertTrue(self.response.can_view(staff))
