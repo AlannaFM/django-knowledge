@@ -1,68 +1,104 @@
-import settings
+from functools import wraps
+from operator import methodcaller
 
-from django.http import Http404, HttpResponseRedirect
-from django.shortcuts import render, redirect, get_object_or_404
-from django.core.urlresolvers import reverse, NoReverseMatch
+from django.core.exceptions import PermissionDenied
 from django.db.models import Q
+from django.http import Http404, HttpResponseRedirect
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import NoReverseMatch, reverse
+from django.views.decorators.http import require_POST
 
-from knowledge.models import Question, Response, Category
-from knowledge.forms import QuestionForm, ResponseForm
+from knowledge import settings
+from knowledge.forms import get_question_form_class, get_response_form_class
+from knowledge.models import Category, Question, Response
 from knowledge.utils import paginate
 
 
+# Despacho explícito da moderação: só o que está neste dicionário pode ser
+# executado. Nada vindo da URL é usado como nome de método (sem getattr).
+MODERATION_ACTIONS = {
+    'question': {
+        'private': methodcaller('private'),
+        'public': methodcaller('public'),
+        'delete': methodcaller('delete'),
+        'lock': methodcaller('lock'),
+        'clear_accepted': methodcaller('clear_accepted'),
+    },
+    'response': {
+        'internal': methodcaller('internal'),
+        'inherit': methodcaller('inherit'),
+        'private': methodcaller('private'),
+        'public': methodcaller('public'),
+        'delete': methodcaller('delete'),
+        'accept': methodcaller('accept'),
+    },
+}
+
+# Usado pelos templates (context 'allowed_mods') e como ponto de extensão.
 ALLOWED_MODS = {
-    'question': [
-        'private', 'public',
-        'delete', 'lock',
-        'clear_accepted'
-    ],
-    'response': [
-        'internal', 'inherit',
-        'private', 'public',
-        'delete', 'accept'
-    ]
+    model: list(actions) for model, actions in MODERATION_ACTIONS.items()
+}
+
+MODERATION_MODELS = {
+    'question': (Question, 'knowledge.change_question'),
+    'response': (Response, 'knowledge.change_response'),
 }
 
 
+def _redirect_to_login(request):
+    return HttpResponseRedirect(
+        settings.LOGIN_URL + "?next=%s" % request.path)
+
+
+def knowledge_login_required(view):
+    """
+    Substitui o bloco de login repetido nas views.
+    Respeita KNOWLEDGE_LOGIN_REQUIRED (settings.LOGIN_REQUIRED), lido
+    na hora do uso, por isso @login_required puro não serve.
+    """
+    @wraps(view)
+    def wrapper(request, *args, **kwargs):
+        if settings.LOGIN_REQUIRED and not request.user.is_authenticated:
+            return _redirect_to_login(request)
+        return view(request, *args, **kwargs)
+    return wrapper
+
+
 def get_my_questions(request):
-
-    if settings.LOGIN_REQUIRED and not request.user.is_authenticated():
-        return HttpResponseRedirect(settings.LOGIN_URL+"?next=%s" % request.path)
-
-    if request.user.is_anonymous():
+    if request.user.is_anonymous:
         return None
-    else:
-        return Question.objects.can_view(request.user)\
-                               .filter(user=request.user)
+    return Question.objects.can_view(request.user)\
+                           .filter(user=request.user)
 
 
+def _set_requesting_user(questions, user):
+    # this is for get_responses()
+    for question in questions:
+        question._requesting_user = user
+
+
+@knowledge_login_required
 def knowledge_index(request,
                     template='django_knowledge/index.html'):
 
-    if settings.LOGIN_REQUIRED and not request.user.is_authenticated():
-        return HttpResponseRedirect(settings.LOGIN_URL+"?next=%s" % request.path)
-
     questions = Question.objects.can_view(request.user)\
                                 .prefetch_related('responses__question')[0:20]
-    # this is for get_responses()
-    [setattr(q, '_requesting_user', request.user) for q in questions]
+    _set_requesting_user(questions, request.user)
 
     return render(request, template, {
         'request': request,
         'questions': questions,
         'my_questions': get_my_questions(request),
         'categories': Category.objects.all(),
-        'BASE_TEMPLATE' : settings.BASE_TEMPLATE,
+        'BASE_TEMPLATE': settings.BASE_TEMPLATE,
     })
 
 
+@knowledge_login_required
 def knowledge_list(request,
                    category_slug=None,
                    template='django_knowledge/list.html',
-                   Form=QuestionForm):
-
-    if settings.LOGIN_REQUIRED and not request.user.is_authenticated():
-        return HttpResponseRedirect(settings.LOGIN_URL+"?next=%s" % request.path)
+                   Form=None):
 
     search = request.GET.get('title', None)
     questions = Question.objects.can_view(request.user)\
@@ -81,8 +117,13 @@ def knowledge_list(request,
     paginator, questions = paginate(questions,
                                     50,
                                     request.GET.get('page', '1'))
-    # this is for get_responses()
-    [setattr(q, '_requesting_user', request.user) for q in questions]
+    _set_requesting_user(questions, request.user)
+
+    form_class = Form or get_question_form_class(request.user)
+    form = None
+    if form_class is not None:
+        form = form_class(user=request.user,
+                          initial={'title': search})  # prefill title
 
     return render(request, template, {
         'request': request,
@@ -91,20 +132,18 @@ def knowledge_list(request,
         'my_questions': get_my_questions(request),
         'category': category,
         'categories': Category.objects.all(),
-        'form': Form(request.user, initial={'title': search}),  # prefill title
-        'BASE_TEMPLATE' : settings.BASE_TEMPLATE,
+        'form': form,
+        'BASE_TEMPLATE': settings.BASE_TEMPLATE,
     })
 
 
+@knowledge_login_required
 def knowledge_thread(request,
                      question_id,
                      slug=None,
                      template='django_knowledge/thread.html',
-                     Form=ResponseForm):
+                     Form=None):
 
-    if settings.LOGIN_REQUIRED and not request.user.is_authenticated():
-        return HttpResponseRedirect(settings.LOGIN_URL+"?next=%s" % request.path)
-    
     try:
         question = Question.objects.can_view(request.user)\
                                    .get(id=question_id)
@@ -120,14 +159,16 @@ def knowledge_thread(request,
     if request.path != question.get_absolute_url():
         return redirect(question.get_absolute_url(), permanent=True)
 
+    form_class = Form or get_response_form_class(request.user)
+
     if request.method == 'POST':
-        form = Form(request.user, question, request.POST)
-        if form and form.is_valid():
-            if request.user.is_authenticated() or not form.cleaned_data['phone_number']:
+        form = form_class(request.POST, user=request.user, question=question)
+        if form.is_valid():
+            if not form.is_spam:
                 form.save()
             return redirect(question.get_absolute_url())
     else:
-        form = Form(request.user, question)
+        form = form_class(user=request.user, question=question)
 
     return render(request, template, {
         'request': request,
@@ -137,10 +178,12 @@ def knowledge_thread(request,
         'allowed_mods': ALLOWED_MODS,
         'form': form,
         'categories': Category.objects.all(),
-        'BASE_TEMPLATE' : settings.BASE_TEMPLATE,
+        'BASE_TEMPLATE': settings.BASE_TEMPLATE,
     })
 
 
+@knowledge_login_required
+@require_POST
 def knowledge_moderate(
         request,
         lookup_id,
@@ -153,40 +196,34 @@ def knowledge_moderate(
     and responses in a vaguely RESTful way.
 
     Usage:
-        /knowledge/moderate/question/1/inherit/     -> 404
-        /knowledge/moderate/question/1/public/      -> 200
+        /knowledge/moderate/question/1/inherit/     -> 404 (mod not allowed)
+        /knowledge/moderate/question/1/public/      -> 302 (redirect)
 
         /knowledge/moderate/response/3/notreal/     -> 404
-        /knowledge/moderate/response/3/inherit/     -> 200
+        /knowledge/moderate/response/3/inherit/     -> 302 (redirect)
 
+        GET on any moderate URL                     -> 405
+        User without permission                     -> 403
     """
 
-    if settings.LOGIN_REQUIRED and not request.user.is_authenticated():
-        return HttpResponseRedirect(settings.LOGIN_URL+"?next=%s" % request.path)
-
-    if request.method != 'POST':
+    if model not in MODERATION_MODELS:
         raise Http404
-
-    if model == 'question':
-        Model, perm = Question, 'change_question'
-    elif model == 'response':
-        Model, perm = Response, 'change_response'
-    else:
-        raise Http404
+    Model, perm = MODERATION_MODELS[model]
 
     if not request.user.has_perm(perm):
-        raise Http404
+        raise PermissionDenied
 
-    if mod not in allowed_mods[model]:
+    if mod not in allowed_mods.get(model, ()):
+        raise Http404
+    action = MODERATION_ACTIONS[model].get(mod)
+    if action is None:
         raise Http404
 
     instance = get_object_or_404(
         Model.objects.can_view(request.user),
         id=lookup_id)
 
-    func = getattr(instance, mod)
-    if callable(func):
-        func()
+    action(instance)
 
     try:
         return redirect((
@@ -197,28 +234,30 @@ def knowledge_moderate(
         return redirect(reverse('knowledge_index'))
 
 
+@knowledge_login_required
 def knowledge_ask(request,
                   template='django_knowledge/ask.html',
-                  Form=QuestionForm):
+                  Form=None):
 
-    if settings.LOGIN_REQUIRED and not request.user.is_authenticated():
-        return HttpResponseRedirect(settings.LOGIN_URL+"?next=%s" % request.path)
+    form_class = Form or get_question_form_class(request.user)
+    if form_class is None:
+        # anônimos não podem perguntar (ALLOW_ANONYMOUS desligado)
+        return _redirect_to_login(request)
 
     if request.method == 'POST':
-        form = Form(request.user, request.POST)
-        if form and form.is_valid():
-            if request.user.is_authenticated() or not form.cleaned_data['phone_number']:
-                question = form.save()
-                return redirect(question.get_absolute_url())
-            else:
+        form = form_class(request.POST, user=request.user)
+        if form.is_valid():
+            if form.is_spam:
                 return redirect('knowledge_index')
+            question = form.save()
+            return redirect(question.get_absolute_url())
     else:
-        form = Form(request.user)
+        form = form_class(user=request.user)
 
     return render(request, template, {
         'request': request,
         'my_questions': get_my_questions(request),
         'form': form,
         'categories': Category.objects.all(),
-        'BASE_TEMPLATE' : settings.BASE_TEMPLATE,
+        'BASE_TEMPLATE': settings.BASE_TEMPLATE,
     })
