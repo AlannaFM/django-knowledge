@@ -1,3 +1,14 @@
+""" formulários de pergunta e de resposta do django-knowledge
+...
+get_response_form_class """
+
+import warnings  # usado para avisar que as funções antigas estão deprecadas
+
+from typing import Any, Optional
+
+from django import forms
+...
+
 from typing import Any, Optional  
 
 from django import forms
@@ -112,7 +123,7 @@ class AuthenticatedResponseForm(BaseResponseForm):
         super().__init__(*args, **kwargs)
 
         if not self.user.is_staff:  # so a equipe escolhe o status de uma resposta
-            self.fields.pop('status', None)  # para os outros o campo some e a resposta fica com o padrão 'inherit'
+            self.fields.pop('status', None)  # para os outros, o campo some e a resposta fica com o padrão 'inherit'
 
 
 class AnonymousResponseForm(_HoneypotMixin, BaseResponseForm):
@@ -134,126 +145,28 @@ def get_response_form_class(user: Any, question: Question) -> Optional[type]:
         return AnonymousResponseForm if settings.ALLOW_ANONYMOUS else None
     return AuthenticatedResponseForm
 
+# deprecadas
 
-
-
-
-__todo__ = """
-This is serious badness. Really? Functions masquerading as
-clases? Lame. This should be fixed. Sorry.
-                                                    ~bryan
-"""
-
-
-def QuestionForm(user, *args, **kwargs):
-    """
-    Build and return the appropriate form depending
-    on the status of the passed in user.
-    """
-
-    if user.is_anonymous:  # era is_anonymous() virou propriedade no django atual e se usa sem parênteses
-        if not settings.ALLOW_ANONYMOUS:
-            return None
-        else:
-            selected_fields = ['name', 'email', 'title', 'body']
-    else:
-        selected_fields = ['user', 'title', 'body', 'status']
-
-    if settings.ALERTS:
-        selected_fields += ['alert']
-
-    class _QuestionForm(forms.ModelForm):
-        def __init__(self, *args, **kwargs):
-            super(_QuestionForm, self).__init__(*args, **kwargs)
-
-            for key in self.fields:
-                if not key in OPTIONAL_FIELDS:
-                    self.fields[key].required = True
-
-            # hide the internal status for non-staff
-            qf = self.fields.get('status', None)
-            if qf and not user.is_staff:
-                choices = list(qf.choices)
-                choices.remove(('internal', _('Internal')))
-                qf.choices = choices
-
-            # a bit of a hack...
-            # hide a field, and use clean to force
-            # a specific value of ours
-            for key in ['user']:
-                qf = self.fields.get(key, None)
-                if qf:
-                    qf.widget = qf.hidden_widget()
-                    qf.required = False
-
-        # honey pot!
-        phone_number = forms.CharField(required=False)
-
-        def clean_user(self):
-            return user
-
-        class Meta:
-            model = Question
-            fields = selected_fields
-
-    return _QuestionForm(*args, **kwargs)
-
-
-def ResponseForm(user, question, *args, **kwargs):
-    """
-    Build and return the appropriate form depending
-    on the status of the passed in user and question.
-    """
-
-    if question.locked:
+def QuestionForm(user: Any, *args: Any, **kwargs: Any) -> Optional[forms.ModelForm]:
+    """ deprecada: use get_question_form_class(user), sai no pr 4 """
+    warnings.warn(  # mostra um aviso para quem ainda usa a função antiga
+        'QuestionForm() está deprecada; use get_question_form_class(user).',
+        DeprecationWarning, stacklevel=2,  # stacklevel=2 faz o aviso apontar para quem chamou, não para esta linha
+    )
+    form_class = get_question_form_class(user)  # a lógica agora fica só nas classes novas
+    if form_class is None:
         return None
+    return form_class(*args, user=user, **kwargs)  # mesma assinatura de antes, então as views antigas continuam funcionando
 
-    if not settings.FREE_RESPONSE and not \
-            (user.is_staff or question.user == user):
+
+def ResponseForm(user: Any, question: Question,
+                 *args: Any, **kwargs: Any) -> Optional[forms.ModelForm]:
+    """ deprecada: use get_response_form_class(user, question), sai no pr 4 """
+    warnings.warn(
+        'ResponseForm() está deprecada; use get_response_form_class(user, question).',
+        DeprecationWarning, stacklevel=2,
+    )
+    form_class = get_response_form_class(user, question)
+    if form_class is None:
         return None
-
-    if user.is_anonymous:  # era is_anonymous() com parênteses da typerror : 'bool' object is not callable
-        if not settings.ALLOW_ANONYMOUS:
-            return None
-        else:
-            selected_fields = ['name', 'email']
-    else:
-        selected_fields = ['user']
-
-    selected_fields += ['body', 'question']
-
-    if user.is_staff:
-        selected_fields += ['status']
-
-    if settings.ALERTS:
-        selected_fields += ['alert']
-
-    class _ResponseForm(forms.ModelForm):
-        def __init__(self, *args, **kwargs):
-            super(_ResponseForm, self).__init__(*args, **kwargs)
-
-            for key in self.fields:
-                if not key in OPTIONAL_FIELDS:
-                    self.fields[key].required = True
-
-            # a bit of a hack...
-            for key in ['user', 'question']:
-                qf = self.fields.get(key, None)
-                if qf:
-                    qf.widget = qf.hidden_widget()
-                    qf.required = False
-
-        # honey pot!
-        phone_number = forms.CharField(required=False)
-
-        def clean_user(self):
-            return user
-
-        def clean_question(self):
-            return question
-
-        class Meta:
-            model = Response
-            fields = selected_fields
-
-    return _ResponseForm(*args, **kwargs)
+    return form_class(*args, user=user, question=question, **kwargs)
