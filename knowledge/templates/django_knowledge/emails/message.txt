@@ -1,5 +1,5 @@
 {% load i18n %}
-{% load markup %}
+{% load knowledge_tags %}
 
 {% blocktrans with name=name %}Hello {{ name }},{% endblocktrans %}
 
