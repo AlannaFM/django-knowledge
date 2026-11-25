@@ -1,10 +1,22 @@
 from hashlib import md5
 from urllib.parse import urlencode
 
+import markdown as markdown_lib #converte markdown para html
 from django import template
+from django.utils.safestring import mark_safe #avisa que o resultado já é html
 
 register = template.Library()
 
+@register.filter(name='markdown')
+def markdown_filter(value):
+    """
+    Converte texto em Markdown para HTML.
+
+    Substitui o filtro do antigo django.contrib.markup (removido no
+    Django 1.6). Os templates usam ``|striptags|markdown``, então as tags
+    HTML digitadas pelo usuário são removidas antes da conversão.
+    """
+    return mark_safe(markdown_lib.markdown(value or ''))
 
 @register.simple_tag
 def get_gravatar(email, size=60, rating='g', default=None):
