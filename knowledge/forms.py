@@ -88,6 +88,56 @@ def get_question_form_class(user: Any) -> Optional[type]:
     return AuthenticatedQuestionForm  
 
 
+# respostas
+
+class BaseResponseForm(_KnowledgeModelForm):
+    class Meta:
+        model = Response
+        fields = ['body', 'alert']
+
+    def __init__(self, *args: Any, question: Question, **kwargs: Any) -> None:  # além do user resposta precisa saber de qual pergunta é
+        self.question = question
+        super().__init__(*args, **kwargs)  # o user é tratado na classe base
+
+    def fill_instance(self, instance: Any) -> None:
+        super().fill_instance(instance)  
+        instance.question = self.question  # substitui o clean_question do legado
+
+
+class AuthenticatedResponseForm(BaseResponseForm):
+    class Meta(BaseResponseForm.Meta):
+        fields = ['body', 'status', 'alert']
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+
+        if not self.user.is_staff:  # so a equipe escolhe o status de uma resposta
+            self.fields.pop('status', None)  # para os outros o campo some e a resposta fica com o padrão 'inherit'
+
+
+class AnonymousResponseForm(_HoneypotMixin, BaseResponseForm):
+    class Meta(BaseResponseForm.Meta):
+        fields = ['name', 'email', 'body', 'alert']
+
+
+def get_response_form_class(user: Any, question: Question) -> Optional[type]:
+    """ devolve a classe de formulário de resposta para este usuário e esta
+    pergunta, ou None se ele não pode responder """
+    if question.locked:  # pergunta trancada não aceita resposta, nem da equipe
+        return None
+
+    if not settings.FREE_RESPONSE and not \
+            (user.is_staff or question.user == user):  # sem free_response so a equipe e o dono da pergunta respondem
+        return None
+
+    if user.is_anonymous:
+        return AnonymousResponseForm if settings.ALLOW_ANONYMOUS else None
+    return AuthenticatedResponseForm
+
+
+
+
+
 __todo__ = """
 This is serious badness. Really? Functions masquerading as
 clases? Lame. This should be fixed. Sorry.
