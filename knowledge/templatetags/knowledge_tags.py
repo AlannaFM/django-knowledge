@@ -22,7 +22,7 @@ def markdown_filter(value):
 def get_gravatar(email, size=60, rating='g', default=None):
     """ Return url for a Gravatar. From Zinnia blog. """
     url = 'https://secure.gravatar.com/avatar/{0}.jpg'.format(
-        md5(email.strip().lower()).hexdigest()
+        md5(email.strip().lower().encode('utf-8')).hexdigest()
     )
     options = {'s': size, 'r': rating}
     if default:
