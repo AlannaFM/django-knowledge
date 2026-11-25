@@ -1,5 +1,5 @@
 from django import forms
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _  # era ugettext_lazy, removido no django 4 (o u vinha do unicode do python 2)
 
 from knowledge import settings
 from knowledge.models import Question, Response
@@ -20,7 +20,7 @@ def QuestionForm(user, *args, **kwargs):
     on the status of the passed in user.
     """
 
-    if user.is_anonymous():
+    if user.is_anonymous:  # era is_anonymous(), virou propriedade no django atual e se usa sem parênteses
         if not settings.ALLOW_ANONYMOUS:
             return None
         else:
@@ -81,7 +81,7 @@ def ResponseForm(user, question, *args, **kwargs):
             (user.is_staff or question.user == user):
         return None
 
-    if user.is_anonymous():
+    if user.is_anonymous:  # era is_anonymous(), com parênteses dá TypeError: 'bool' object is not callable
         if not settings.ALLOW_ANONYMOUS:
             return None
         else:
