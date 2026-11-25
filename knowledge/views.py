@@ -159,9 +159,12 @@ def knowledge_thread(request,
     if request.path != question.get_absolute_url():
         return redirect(question.get_absolute_url(), permanent=True)
 
-    form_class = Form or get_response_form_class(request.user)
+    form_class = Form or get_response_form_class(request.user, question)
 
-    if request.method == 'POST':
+    if form_class is None:
+        # pergunta trancada, FREE_RESPONSE desligado ou anônimo não permitido
+        form = None
+    elif request.method == 'POST':
         form = form_class(request.POST, user=request.user, question=question)
         if form.is_valid():
             if not form.is_spam:
@@ -240,19 +243,20 @@ def knowledge_ask(request,
                   Form=None):
 
     form_class = Form or get_question_form_class(request.user)
-    if form_class is None:
-        # anônimos não podem perguntar (ALLOW_ANONYMOUS desligado)
-        return _redirect_to_login(request)
 
-    if request.method == 'POST':
-        form = form_class(request.POST, user=request.user)
-        if form.is_valid():
-            if form.is_spam:
-                return redirect('knowledge_index')
-            question = form.save()
-            return redirect(question.get_absolute_url())
-    else:
-        form = form_class(user=request.user)
+    # Sem classe de formulário (ex.: anônimo não permitido) a página
+    # renderiza sem formulário, como no legado (200, sem redirecionar).
+    form = None
+    if form_class is not None:
+        if request.method == 'POST':
+            form = form_class(request.POST, user=request.user)
+            if form.is_valid():
+                if form.is_spam:
+                    return redirect('knowledge_index')
+                question = form.save()
+                return redirect(question.get_absolute_url())
+        else:
+            form = form_class(user=request.user)
 
     return render(request, template, {
         'request': request,

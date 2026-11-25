@@ -31,7 +31,7 @@ def moderate_url(model, lookup_id, mod):
     return reverse('knowledge_moderate', args=[model, lookup_id, mod])
 
 
-# ---------------------------------------------------------------- páginas
+# ----------------------------------------------------------------- páginas
 
 def test_index(client):
     assert client.get(reverse('knowledge_index')).status_code == 200
@@ -54,7 +54,7 @@ def test_list_category(client):
     assert client.get(url).status_code == 200
 
 
-# ----------------------------------------------------------------- thread
+# ------------------------------------------------------------------ thread
 
 def test_thread_inexistente_404(client):
     url = reverse('knowledge_thread', args=[123456, 'a-big-long-slug'])
@@ -95,7 +95,22 @@ def test_thread_publica_anonimo_ve_mas_nao_responde(client, question):
     assert question.responses.count() == 0
 
 
-# --------------------------------------------------------------- moderate
+def test_thread_sem_formulario_quando_classe_none(
+        client, joe, question, monkeypatch):
+    # pergunta trancada, FREE_RESPONSE desligado ou anônimo não permitido
+    monkeypatch.setattr('knowledge.views.get_response_form_class',
+                        lambda user, question: None)
+    client.force_login(joe)
+    url = question.get_absolute_url()
+
+    assert client.get(url).status_code == 200
+
+    r = client.post(url, {'body': 'nao deveria salvar'})
+    assert r.status_code == 200
+    assert question.responses.count() == 0
+
+
+# ---------------------------------------------------------------- moderate
 
 def test_moderate_get_retorna_405(client, admin_user, question):
     client.force_login(admin_user)
@@ -143,7 +158,8 @@ def test_moderate_model_invalido_404(client, admin_user):
     assert r.status_code == 404
 
 
-def test_moderate_nao_executa_metodo_fora_da_lista(client, admin_user, question):
+def test_moderate_nao_executa_metodo_fora_da_lista(
+        client, admin_user, question):
     # 'save' existe no model mas não está em MODERATION_ACTIONS
     client.force_login(admin_user)
     r = client.post(moderate_url('question', question.id, 'save'))
@@ -177,17 +193,17 @@ def test_moderate_delete_e_depois_404(client, admin_user, question):
     assert client.post(url).status_code == 404
 
 
-# -------------------------------------------------------------------- ask
-
-def test_ask_get_anonimo(client):
-    assert client.get(reverse('knowledge_ask')).status_code == 200
-
+# --------------------------------------------------------------------- ask
 
 QUESTION_POST = {
     'title': 'This is a title friend!',
     'body': 'This is the body friend!',
     'status': 'private',
 }
+
+
+def test_ask_get_anonimo(client):
+    assert client.get(reverse('knowledge_ask')).status_code == 200
 
 
 def test_ask_post_anonimo_invalido_fica_na_pagina(client):
@@ -204,7 +220,20 @@ def test_ask_post_usuario_logado_cria_pergunta(client, joe):
                                    title=QUESTION_POST['title']).exists()
 
 
-# ---------------------------------------------- decorador de login (LOGIN_REQUIRED)
+def test_ask_sem_formulario_quando_classe_none(client, monkeypatch):
+    # sem classe de form (ex.: anônimo não permitido) a página
+    # renderiza sem formulário, como no legado
+    monkeypatch.setattr('knowledge.views.get_question_form_class',
+                        lambda user: None)
+
+    assert client.get(reverse('knowledge_ask')).status_code == 200
+
+    r = client.post(reverse('knowledge_ask'), {'title': 'x', 'body': 'y'})
+    assert r.status_code == 200
+    assert Question.objects.count() == 0
+
+
+# --------------------------------------- decorador de login (LOGIN_REQUIRED)
 
 @pytest.mark.parametrize('url_name', [
     'knowledge_index', 'knowledge_list', 'knowledge_ask',
@@ -236,7 +265,7 @@ def test_login_required_desligado_nao_redireciona(client, monkeypatch):
     assert client.get(reverse('knowledge_index')).status_code == 200
 
 
-# ------------------------------------------ get_absolute_url (pendente do Int 1)
+# ----------------------------------- get_absolute_url (pendente do Int 1)
 
 def test_get_absolute_url_com_slug(monkeypatch, question):
     monkeypatch.setattr(knowledge_settings, 'SLUG_URLS', True)
