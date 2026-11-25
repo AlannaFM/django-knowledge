@@ -1,16 +1,28 @@
 from hashlib import md5
 from urllib.parse import urlencode
 
+import markdown as markdown_lib #converte markdown para html
 from django import template
+from django.utils.safestring import mark_safe #avisa que o resultado já é html
 
 register = template.Library()
 
+@register.filter(name='markdown')
+def markdown_filter(value):
+    """
+    Converte texto em Markdown para HTML.
+
+    Substitui o filtro do antigo django.contrib.markup (removido no
+    Django 1.6). Os templates usam ``|striptags|markdown``, então as tags
+    HTML digitadas pelo usuário são removidas antes da conversão.
+    """
+    return mark_safe(markdown_lib.markdown(value or ''))
 
 @register.simple_tag
 def get_gravatar(email, size=60, rating='g', default=None):
     """ Return url for a Gravatar. From Zinnia blog. """
     url = 'https://secure.gravatar.com/avatar/{0}.jpg'.format(
-        md5(email.strip().lower().encode('utf-8')).hexdigest()
+        md5(email.strip().lower()).hexdigest()
     )
     options = {'s': size, 'r': rating}
     if default:
