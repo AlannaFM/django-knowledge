@@ -1,22 +1,24 @@
-from django.conf.urls import patterns, url
+from django.urls import path, re_path
 
-urlpatterns = patterns('knowledge.views',
-    url(r'^$', 'knowledge_index', name='knowledge_index'),
+from knowledge import views
 
-    url(r'^questions/$', 'knowledge_list', name='knowledge_list'),
+urlpatterns = [
+    path('', views.knowledge_index, name='knowledge_index'),
 
-    url(r'^questions/(?P<question_id>\d+)/$',
-        'knowledge_thread', name='knowledge_thread_no_slug'),
+    path('questions/', views.knowledge_list, name='knowledge_list'),
 
-    url(r'^questions/(?P<category_slug>[a-z0-9-_]+)/$', 'knowledge_list',
-        name='knowledge_list_category'),
+    path('questions/<int:question_id>/',
+         views.knowledge_thread, name='knowledge_thread_no_slug'),
 
-    url(r'^questions/(?P<question_id>\d+)/(?P<slug>[a-z0-9-_]+)/$',
-        'knowledge_thread', name='knowledge_thread'),
+    re_path(r'^questions/(?P<category_slug>[a-z0-9-_]+)/$',
+            views.knowledge_list, name='knowledge_list_category'),
 
-    url(r'^moderate/(?P<model>[a-z]+)/'
-        r'(?P<lookup_id>\d+)/(?P<mod>[a-zA-Z0-9_]+)/$',
-        'knowledge_moderate', name='knowledge_moderate'),
+    path('questions/<int:question_id>/<slug:slug>/',
+         views.knowledge_thread, name='knowledge_thread'),
 
-    url(r'^ask/$', 'knowledge_ask', name='knowledge_ask'),
-)
+    re_path(r'^moderate/(?P<model>[a-z]+)/'
+            r'(?P<lookup_id>\d+)/(?P<mod>[a-zA-Z0-9_]+)/$',
+            views.knowledge_moderate, name='knowledge_moderate'),
+
+    path('ask/', views.knowledge_ask, name='knowledge_ask'),
+]
